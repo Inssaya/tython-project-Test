@@ -7,11 +7,6 @@ export default function EventViewModal({ eventId, onClose, onChanged }) {
   const [event, setEvent] = useState(null);
   const [registrations, setRegistrations] = useState([]);
   const [error, setError] = useState('');
-
-  const [search, setSearch] = useState('');
-  const [results, setResults] = useState([]);
-  const [regError, setRegError] = useState('');
-  const [regMessage, setRegMessage] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
 
   const load = () => {
@@ -28,10 +23,6 @@ export default function EventViewModal({ eventId, onClose, onChanged }) {
   useEffect(() => {
     setEvent(null);
     setError('');
-    setSearch('');
-    setResults([]);
-    setRegMessage('');
-    setRegError('');
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
@@ -40,31 +31,6 @@ export default function EventViewModal({ eventId, onClose, onChanged }) {
     await apiClient.patch(`/events/${eventId}/status`, { status });
     load();
     onChanged?.();
-  };
-
-  const searchParticipants = async (value) => {
-    setSearch(value);
-    if (!value.trim()) {
-      setResults([]);
-      return;
-    }
-    const { data } = await apiClient.get('/participants', { params: { search: value } });
-    setResults(data.participants);
-  };
-
-  const registerParticipant = async (participantId) => {
-    setRegError('');
-    setRegMessage('');
-    try {
-      await apiClient.post('/registrations', { eventId, participantId });
-      setRegMessage('Inscription effectuee.');
-      setSearch('');
-      setResults([]);
-      load();
-      onChanged?.();
-    } catch (err) {
-      setRegError(err.response?.data?.error || 'Inscription impossible.');
-    }
   };
 
   const updateRegistrationStatus = async (registrationId, status) => {
@@ -103,6 +69,9 @@ export default function EventViewModal({ eventId, onClose, onChanged }) {
             <div className="mt-3 text-sm text-slate-600">
               Inscrits : {event.registeredCount ?? 0} / {event.maxParticipants}
             </div>
+            {event.createdByName && (
+              <div className="mt-1 text-sm text-slate-500">Cree par : {event.createdByName}</div>
+            )}
 
             <div className="mt-4 flex items-center gap-2">
               <label className="text-sm font-medium text-slate-700">Statut :</label>
@@ -142,39 +111,6 @@ export default function EventViewModal({ eventId, onClose, onChanged }) {
                 {linkCopied ? 'Copie !' : 'Copier'}
               </button>
             </div>
-          </div>
-
-          <div className="border-t border-slate-100 pt-4">
-            <h4 className="mb-2 text-sm font-semibold text-slate-900">Inscrire un participant existant</h4>
-            {event.status !== 'published' && (
-              <p className="mb-2 text-sm text-amber-600">
-                L'evenement doit etre publie pour pouvoir inscrire des participants.
-              </p>
-            )}
-            <div className="relative">
-              <input
-                placeholder="Rechercher un participant par nom ou email..."
-                value={search}
-                onChange={(e) => searchParticipants(e.target.value)}
-                disabled={event.status !== 'published'}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50"
-              />
-              {results.length > 0 && (
-                <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-sm">
-                  {results.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => registerParticipant(p.id)}
-                      className="block w-full px-3 py-2 text-left text-sm hover:bg-indigo-50"
-                    >
-                      {p.fullName} <span className="text-slate-400">({p.email})</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {regError && <p className="mt-2 text-sm text-red-600">{regError}</p>}
-            {regMessage && <p className="mt-2 text-sm text-emerald-600">{regMessage}</p>}
           </div>
 
           <div className="border-t border-slate-100 pt-4">

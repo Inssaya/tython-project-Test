@@ -4,10 +4,13 @@ import apiClient from '../api/client';
 import StatusBadge from '../components/StatusBadge';
 import EventFormModal from '../components/EventFormModal';
 import EventViewModal from '../components/EventViewModal';
+import { useAuth } from '../context/AuthContext';
 
 const STATUSES = ['draft', 'published', 'cancelled'];
 
 export default function EventsList() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const location = useLocation();
   const navigate = useNavigate();
   const [events, setEvents] = useState([]);
@@ -116,6 +119,7 @@ export default function EventsList() {
                 <th className="px-4 py-3">Lieu</th>
                 <th className="px-4 py-3">Places</th>
                 <th className="px-4 py-3">Statut</th>
+                {isAdmin && <th className="px-4 py-3">Cree par</th>}
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -138,6 +142,7 @@ export default function EventsList() {
                   <td className="px-4 py-3">
                     <StatusBadge status={event.status} />
                   </td>
+                  {isAdmin && <td className="px-4 py-3 text-slate-600">{event.createdByName}</td>}
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1.5">
                       <button
@@ -177,7 +182,7 @@ export default function EventsList() {
               ))}
               {events.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
+                  <td colSpan={isAdmin ? 7 : 6} className="px-4 py-6 text-center text-slate-400">
                     Aucun evenement.
                   </td>
                 </tr>

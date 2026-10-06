@@ -69,7 +69,8 @@ Le script SQL complet (tables, contraintes, index, trigger `updated_at`) se trou
 - `participants.email` UNIQUE
 - `registrations (event_id, participant_id)` UNIQUE — empeche une double inscription
 - `registrations.status` CHECK (`pending`, `confirmed`, `cancelled`)
-- Toutes les FK sont `NOT NULL` sauf `events.created_by` (`SET NULL` si l'utilisateur est supprime)
+- Toutes les FK sont `NOT NULL`, y compris `events.created_by` (`ON DELETE CASCADE` : supprimer un
+  compte staff supprime ses evenements, qui a leur tour suppriment leurs inscriptions)
 
 ### Index recommandes
 
@@ -85,6 +86,17 @@ Le script SQL complet (tables, contraintes, index, trigger `updated_at`) se trou
 3. **Capacite maximale respectee** : si `registrations non annulees >= max_participants` -> 409 (verrouillage `SELECT ... FOR UPDATE` pour eviter les conditions de course).
 4. **Annulation en cascade** : passer un evenement en `cancelled` repasse automatiquement toutes ses inscriptions en `cancelled`.
 
+### Isolation des donnees par role
+
+- **staff** : ne voit et ne gere que les evenements qu'il a lui-meme crees (liste, detail, modification,
+  changement de statut, suppression, inscriptions). Toute tentative d'acces a un evenement d'un
+  autre staff renvoie `403`.
+- **admin** : voit et gere tous les evenements, quel que soit leur createur (colonne "Cree par"
+  affichee dans la liste), et accede en plus a la page **Gestion du staff** (`/staff`) : liste des
+  comptes staff (date de creation, nombre d'evenements, nombre de participants), creation d'un
+  nouveau compte staff, reinitialisation de mot de passe, et suppression d'un compte staff (cascade
+  sur ses evenements et inscriptions).
+
 ## 4. Installation
 
 ### Option A — Docker Compose (recommande)
@@ -95,13 +107,18 @@ Pre-requis : Docker Desktop.
 docker compose up --build
 ```
 
-Cela demarre PostgreSQL, applique le schema, insere les donnees de demonstration (seed) et lance
-le backend (port 4000) et le frontend (port 5173).
+Cela demarre PostgreSQL, applique le schema, insere les donnees de demonstration (seed, uniquement
+si la base est vide) et lance le backend (port 4000) et le frontend (port 5173).
 
 > Le service `postgres` est expose sur le port hote `5433` (`5433:5432`) pour eviter tout conflit
 > avec un PostgreSQL local deja installe sur le port 5432 par defaut. Cela n'affecte que l'acces
 > depuis votre machine (ex. via psql) : le backend communique avec `postgres:5432` sur le reseau
 > Docker interne, inchange.
+
+> Le seed est sans danger a chaque redemarrage : il ne s'execute que si la base est vide (verifie
+> le nombre d'utilisateurs). Redemarrer ou reconstruire les conteneurs ne supprime donc jamais les
+> donnees reelles saisies dans l'application. Pour forcer une reinitialisation complete aux
+> donnees de demonstration : `docker compose exec backend npm run db:reseed`.
 
 Ouvrez http://localhost:5173.
 
@@ -159,7 +176,8 @@ npm run dev               # http://localhost:5173
 | `npm run dev` | Demarre l'API avec rechargement automatique (nodemon) |
 | `npm start` | Demarre l'API en mode production |
 | `npm run db:migrate` | Applique `db/schema.sql` |
-| `npm run db:seed` | Insere les donnees de demonstration (1 admin, 1 staff, 5 evenements, 10 participants, 20 inscriptions) |
+| `npm run db:seed` | Insere les donnees de demonstration (1 admin, 1 staff, 5 evenements, 10 participants, 20 inscriptions) — ne fait rien si la base contient deja des donnees |
+| `npm run db:reseed` | Comme `db:seed` mais force la reinitialisation (`TRUNCATE`) meme si la base contient deja des donnees |
 | `npm test` | Lance les tests Jest/Supertest (necessite une base migree + seedee) |
 
 ## 6. API REST
@@ -219,6 +237,15 @@ regles metier (evenement publie, pas de doublon, capacite maximale).
 | GET | `/api/public/events/:id` | Informations publiques de l'evenement (sans auth) |
 | POST | `/api/public/events/:id/register` | Auto-inscription d'un invite (sans auth) |
 
+### Utilisateurs (admin uniquement)
+
+| Methode | Route | Description |
+|---|---|---|
+| POST | `/api/users` | Creer un compte staff (ou admin) |
+| GET | `/api/users?role=` | Lister les utilisateurs avec `totalEvents` / `totalParticipants` agreges |
+| PATCH | `/api/users/:id/reset-password` | Reinitialiser le mot de passe d'un compte staff |
+| DELETE | `/api/users/:id` | Supprimer un compte staff (cascade sur ses evenements/inscriptions) |
+
 ### Codes d'erreur
 
 `400` validation (Zod) · `401` non authentifie / identifiants invalides · `403` role insuffisant ·
@@ -226,9 +253,14 @@ regles metier (evenement publie, pas de doublon, capacite maximale).
 
 ## 7. Frontend
 
-Pages : **Login**, **Dashboard** (statistiques), **Evenements** (liste + filtres + creation),
-**Detail evenement** (edition, publication/annulation, inscription de participants, liste des
-inscriptions avec changement de statut), **Participants** (liste, recherche, creation/edition).
+Pages : **Login**, **Dashboard** (statistiques), **Evenements** (liste + filtres + creation ; les
+actions **Ouvrir**, **Modifier**, **Publier**, **Supprimer** sont sur chaque ligne), **Participants**
+(liste, recherche, creation/edition), **Gestion du staff** (`/staff`, admin uniquement), et la page
+publique **Formulaire d'inscription** (`/register/:id`, sans authentification).
+
+Le detail d'un evenement (infos completes, changement de statut, lien public a copier, liste des
+inscriptions avec changement de statut) s'ouvre dans un popup depuis la liste des evenements
+plutot que sur une page dediee.
 
 L'authentification JWT est stockee dans `localStorage` et injectee automatiquement sur chaque
 requete via un intercepteur Axios ; une reponse `401` redirige vers `/login`.
@@ -257,8 +289,10 @@ qui ne necessite pas de base de donnees.
 - 20 inscriptions reparties entre statuts `pending`, `confirmed` et `cancelled`
   (y compris les inscriptions de l'evenement annule, toutes passees a `cancelled`)
 
-Le script est idempotent : il vide les tables (`TRUNCATE ... CASCADE`) avant de reinserer les
-donnees, donc il peut etre relance sans effet de bord.
+Le script ne s'execute que si la base est vide (il ne touche rien si des utilisateurs existent
+deja) : il peut etre relance sans danger. Pour forcer une reinitialisation complete malgre des
+donnees existantes : `npm run db:reseed` (vide les tables via `TRUNCATE ... CASCADE` puis reinsere
+les donnees de demonstration).
 
 ## 10. Bonus implementes
 

@@ -3,18 +3,33 @@
  * 1 admin + 1 staff user, 5 events (draft/published/cancelled),
  * 10 participants, 20 registrations across various statuses.
  *
- * Usage: node db/seed.js
+ * Safe by default: does nothing if the database already has data (e.g. a container
+ * restart, or `docker compose up --build` running the startup command again), so it
+ * never wipes real usage. Pass --force to reset and reseed anyway.
+ *
+ * Usage: node db/seed.js [--force]
  */
 require('dotenv').config();
 const bcrypt = require('bcrypt');
 const pool = require('../src/config/db');
 
+const force = process.argv.includes('--force');
+
 async function main() {
+  if (!force) {
+    const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM users');
+    if (rows[0].count > 0) {
+      console.log('Database already has data — skipping seed (pass --force to reset).');
+      await pool.end();
+      return;
+    }
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // Reset tables (idempotent re-seed for local/dev use only)
+    // Reset tables (only reached on a fresh/empty database, or when --force is passed)
     await client.query('TRUNCATE registrations, events, participants, users RESTART IDENTITY CASCADE');
 
     const adminHash = await bcrypt.hash('admin123', 10);

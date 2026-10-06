@@ -30,6 +30,11 @@ export default function Navbar() {
             <NavLink to="/participants" className={linkClass}>
               Participants
             </NavLink>
+            {user?.role === 'admin' && (
+              <NavLink to="/staff" className={linkClass}>
+                Staff
+              </NavLink>
+            )}
           </nav>
         </div>
         <div className="flex items-center gap-3">

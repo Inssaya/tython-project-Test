@@ -9,6 +9,7 @@
     "dev": "nodemon src/server.js",
     "db:migrate": "node db/migrate.js",
     "db:seed": "node db/seed.js",
+    "db:reseed": "node db/seed.js --force",
     "test": "jest --runInBand"
   },
   "dependencies": {
