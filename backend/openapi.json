@@ -1,0 +1,276 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "EventHub API",
+    "version": "1.0.0",
+    "description": "Gestion d'evenements, participants et inscriptions."
+  },
+  "servers": [{ "url": "/api" }],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "schemas": {
+      "Event": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "title": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "location": { "type": "string", "nullable": true },
+          "eventDate": { "type": "string", "format": "date-time" },
+          "maxParticipants": { "type": "integer" },
+          "status": { "type": "string", "enum": ["draft", "published", "cancelled"] },
+          "createdBy": { "type": "string", "format": "uuid", "nullable": true },
+          "registeredCount": { "type": "integer" }
+        }
+      },
+      "Participant": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "fullName": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "phone": { "type": "string", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Registration": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "eventId": { "type": "string", "format": "uuid" },
+          "participantId": { "type": "string", "format": "uuid" },
+          "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "details": { "type": "array", "items": { "type": "object" } }
+        }
+      }
+    }
+  },
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "summary": "Login",
+        "security": [],
+        "tags": ["Auth"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": { "email": { "type": "string" }, "password": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Token issued" },
+          "401": { "description": "Invalid credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "summary": "Current authenticated user",
+        "tags": ["Auth"],
+        "responses": { "200": { "description": "Current user" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/events": {
+      "post": {
+        "summary": "Create an event",
+        "tags": ["Events"],
+        "responses": { "201": { "description": "Created" }, "400": { "description": "Validation error" } }
+      },
+      "get": {
+        "summary": "List events",
+        "tags": ["Events"],
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["draft", "published", "cancelled"] } },
+          { "name": "date", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "search", "in": "query", "schema": { "type": "string" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer" } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "List of events" } }
+      }
+    },
+    "/events/{id}": {
+      "get": {
+        "summary": "Get event detail with registrations",
+        "tags": ["Events"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Event" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "summary": "Update an event",
+        "tags": ["Events"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Updated" }, "404": { "description": "Not found" } }
+      },
+      "delete": {
+        "summary": "Delete an event (cascades to its registrations)",
+        "tags": ["Events"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "204": { "description": "Deleted" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/events/{id}/status": {
+      "patch": {
+        "summary": "Change event status (draft/published/cancelled). Cancelling cascades to registrations.",
+        "tags": ["Events"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Updated" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/participants": {
+      "post": {
+        "summary": "Create a participant",
+        "tags": ["Participants"],
+        "responses": { "201": { "description": "Created" }, "409": { "description": "Email already exists" } }
+      },
+      "get": {
+        "summary": "List / search participants",
+        "tags": ["Participants"],
+        "parameters": [
+          { "name": "search", "in": "query", "schema": { "type": "string" }, "description": "Matches fullName or email" },
+          { "name": "page", "in": "query", "schema": { "type": "integer" } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "List of participants" } }
+      }
+    },
+    "/participants/{id}": {
+      "get": {
+        "summary": "Get a participant",
+        "tags": ["Participants"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Participant" }, "404": { "description": "Not found" } }
+      },
+      "put": {
+        "summary": "Update a participant",
+        "tags": ["Participants"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Updated" }, "409": { "description": "Email already exists" } }
+      }
+    },
+    "/registrations": {
+      "post": {
+        "summary": "Register a participant to an event",
+        "description": "Rules enforced: event must be published, no duplicate registration, event must not be full.",
+        "tags": ["Registrations"],
+        "responses": {
+          "201": { "description": "Created" },
+          "400": { "description": "Event not published" },
+          "404": { "description": "Event or participant not found" },
+          "409": { "description": "Already registered or event full" }
+        }
+      },
+      "get": {
+        "summary": "List registrations",
+        "tags": ["Registrations"],
+        "parameters": [
+          { "name": "eventId", "in": "query", "schema": { "type": "string" } },
+          { "name": "participantId", "in": "query", "schema": { "type": "string" } },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["pending", "confirmed", "cancelled"] } },
+          { "name": "page", "in": "query", "schema": { "type": "integer" } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "List of registrations" } }
+      }
+    },
+    "/registrations/{id}/status": {
+      "patch": {
+        "summary": "Change registration status",
+        "tags": ["Registrations"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Updated" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/public/events/{id}": {
+      "get": {
+        "summary": "Public event info (no auth) for the shareable registration form",
+        "security": [],
+        "tags": ["Public"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Event" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/public/events/{id}/register": {
+      "post": {
+        "summary": "Guest self-registration (no auth). Creates the participant if the email is new.",
+        "security": [],
+        "tags": ["Public"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["fullName", "email"],
+                "properties": {
+                  "fullName": { "type": "string" },
+                  "email": { "type": "string" },
+                  "phone": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Created" },
+          "400": { "description": "Event not published" },
+          "404": { "description": "Event not found" },
+          "409": { "description": "Already registered or event full" }
+        }
+      }
+    },
+    "/users": {
+      "post": {
+        "summary": "Create a staff/admin account (admin only)",
+        "tags": ["Users"],
+        "responses": { "201": { "description": "Created" }, "409": { "description": "Email already exists" } }
+      },
+      "get": {
+        "summary": "List users with aggregated stats (admin only)",
+        "tags": ["Users"],
+        "parameters": [{ "name": "role", "in": "query", "schema": { "type": "string", "enum": ["admin", "staff"] } }],
+        "responses": { "200": { "description": "List of users with totalEvents/totalParticipants" } }
+      }
+    },
+    "/users/{id}/reset-password": {
+      "patch": {
+        "summary": "Reset a staff account's password (admin only)",
+        "tags": ["Users"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Updated" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/users/{id}": {
+      "delete": {
+        "summary": "Delete a staff account (admin only). Cascades to their events and registrations.",
+        "tags": ["Users"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "204": { "description": "Deleted" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/dashboard/stats": {
+      "get": {
+        "summary": "Dashboard statistics",
+        "tags": ["Dashboard"],
+        "responses": { "200": { "description": "totalEvents, publishedEvents, registrationsToday, topEvents" } }
+      }
+    }
+  }
+}
